@@ -227,6 +227,10 @@ RunService.Heartbeat:Connect(function()
             lastRelease = tick()
             log("DIGENDONG → release")
             forceRelease()
+                pcall(function()
+    local cancel = game.ReplicatedStorage.Remotes.Killers.Stalker.CancelGrabHitbox
+    cancel:FireServer()
+end)
         end
     end
     
