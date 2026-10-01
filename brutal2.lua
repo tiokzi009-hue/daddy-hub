@@ -1,9 +1,10 @@
--- DADDY KILLER LOCK v7
--- Violence District | Anti Grab Smooth
+-- DADDY KILLER LOCK v10
+-- Violence District | Team Filter + Remote Attack + Auto Cancel Grab
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local char = player.Character or player.CharacterAdded:Wait()
@@ -28,42 +29,35 @@ local CFG = {
     Range = 1000,
     FireRate = 0.15,
     Debug = true,
-    WalkSpeed = 30,
-    JumpPower = 60,
+    UseRemote = true,
 }
 
 local function log(...)
     if CFG.Debug then print("[DADDY]", ...) end
 end
 
--- CARI KILLER PLAYER
+-- ===== FILTER KILLER PAKAI TEAM =====
+local function isKillerPlayer(plr)
+    if not plr or plr == player then return false end
+    if not plr.Character or not plr.Character:FindFirstChild("Humanoid") then return false end
+    if plr.Character.Humanoid.Health <= 0 then return false end
+    if not plr.Team then return false end
+    local tn = plr.Team.Name:lower()
+    return tn == "killer" or tn:find("killer") ~= nil
+end
+
+-- ===== CARI KILLER =====
 local function findKiller()
     local closest, dist = nil, CFG.Range
     for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= player then
+        if isKillerPlayer(plr) then
             local c = plr.Character
-            if c and c:FindFirstChild("Humanoid") and c.Humanoid.Health > 0 then
-                local hrp = c:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    local d = (hrp.Position - root.Position).Magnitude
-                    if d < dist then
-                        dist = d
-                        closest = c
-                    end
-                end
-            end
-        end
-    end
-    -- fallback NPC
-    if not closest then
-        for _, obj in pairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj ~= char then
-                if obj.Humanoid.Health > 0 and obj.Name:lower():find("killer") then
-                    local hrp = obj:FindFirstChild("HumanoidRootPart")
-                    if hrp then
-                        local d = (hrp.Position - root.Position).Magnitude
-                        if d < dist then dist, closest = d, obj end
-                    end
+            local hrp = c:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local d = (hrp.Position - root.Position).Magnitude
+                if d < dist then
+                    dist = d
+                    closest = c
                 end
             end
         end
@@ -71,9 +65,15 @@ local function findKiller()
     return closest
 end
 
--- HIGHLIGHT MERAH
+-- ===== HIGHLIGHT MERAH (cuma 1 target) =====
+local currentHL = nil
 local function paintRed(model)
     if not model then return end
+    if currentHL and currentHL ~= model then
+        local old = currentHL:FindFirstChild("DaddyRed")
+        if old then old:Destroy() end
+    end
+    currentHL = model
     if model:FindFirstChild("DaddyRed") then return end
     local hl = Instance.new("Highlight")
     hl.Name = "DaddyRed"
@@ -85,30 +85,54 @@ local function paintRed(model)
     hl.Parent = model
 end
 
--- TALI
+-- ===== TALI =====
 local taliBeam, taliAtt1 = nil, nil
 local function makeTali()
     if taliBeam then taliBeam:Destroy() end
-    local att0 = Instance.new("Attachment")
-    att0.Name = "DaddyAtt0"
-    att0.Parent = root
-    local att1 = Instance.new("Attachment")
-    att1.Name = "DaddyAtt1"
-    att1.Parent = root
+    local a0 = Instance.new("Attachment")
+    a0.Name = "DaddyAtt0"
+    a0.Parent = root
+    local a1 = Instance.new("Attachment")
+    a1.Name = "DaddyAtt1"
+    a1.Parent = root
     local beam = Instance.new("Beam")
     beam.Name = "DaddyTali"
-    beam.Attachment0 = att0
-    beam.Attachment1 = att1
+    beam.Attachment0 = a0
+    beam.Attachment1 = a1
     beam.Color = ColorSequence.new(Color3.fromRGB(0, 255, 120))
     beam.Width0 = 0.2
     beam.Width1 = 0.2
     beam.FaceCamera = true
     beam.Parent = root
     taliBeam = beam
-    taliAtt1 = att1
+    taliAtt1 = a1
 end
 
--- ANTI GRAB: bersih TANPA teleport, TANPA force speed
+-- ===== REMOTE REFERENCES =====
+local remoteHit = nil
+local remoteCancelGrab = nil
+
+pcall(function()
+    local remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
+    if remotes then
+        local attacks = remotes:FindFirstChild("Attacks")
+        if attacks then
+            remoteHit = attacks:FindFirstChild("hit")
+        end
+        local killers = remotes:FindFirstChild("Killers")
+        if killers then
+            local stalker = killers:FindFirstChild("Stalker")
+            if stalker then
+                remoteCancelGrab = stalker:FindFirstChild("CancelGrabHitbox")
+            end
+        end
+    end
+end)
+
+if remoteHit then log("remoteHit OK") else log("remoteHit GA ADA") end
+if remoteCancelGrab then log("remoteCancelGrab OK") else log("remoteCancelGrab GA ADA") end
+
+-- ===== ANTI GRAB =====
 local function forceRelease()
     -- Hapus HRP_Clone
     for _, obj in pairs(char:GetDescendants()) do
@@ -116,20 +140,20 @@ local function forceRelease()
             pcall(function() obj:Destroy() end)
         end
     end
-    
+
     -- Hapus Weld/WeldConstraint ke HRP_Clone
     for _, obj in pairs(char:GetDescendants()) do
         if obj:IsA("Weld") or obj:IsA("WeldConstraint") then
             local p0 = obj.Part0
             local p1 = obj.Part1
-            local p0Name = p0 and p0.Name or ""
-            local p1Name = p1 and p1.Name or ""
-            if p0Name:find("HRP_Clone") or p1Name:find("HRP_Clone") then
+            local p0N = p0 and p0.Name or ""
+            local p1N = p1 and p1.Name or ""
+            if p0N:find("HRP_Clone") or p1N:find("HRP_Clone") then
                 pcall(function() obj:Destroy() end)
             end
         end
     end
-    
+
     -- Hapus isi folder RagdollConstraints
     local ragdoll = char:FindFirstChild("RagdollConstraints")
     if ragdoll then
@@ -137,33 +161,46 @@ local function forceRelease()
             pcall(function() obj:Destroy() end)
         end
     end
-    
+
     -- Hapus BallSocket / Align / Rope / Rod
     for _, obj in pairs(char:GetDescendants()) do
-        if obj:IsA("BallSocketConstraint") 
-        or obj:IsA("AlignPosition") 
+        if obj:IsA("BallSocketConstraint")
+        or obj:IsA("AlignPosition")
         or obj:IsA("AlignOrientation")
         or obj:IsA("RopeConstraint")
         or obj:IsA("RodConstraint") then
             pcall(function() obj:Destroy() end)
         end
     end
-    
-    -- Lepas state, TANPA teleport, TANPA force speed
+
+    -- Lepas state
     pcall(function()
         root.Anchored = false
         hum.PlatformStand = false
         hum.Sit = false
     end)
+
+    -- FIRE REMOTE CANCEL GRAB
+    if remoteCancelGrab then
+        pcall(function()
+            remoteCancelGrab:FireServer()
+            log("CANCEL GRAB fired")
+        end)
+    end
 end
 
--- MAIN LOOP: AIM + FIRE
+-- ===== MAIN LOOP: AIM + FIRE =====
 local lastFire = 0
 RunService.RenderStepped:Connect(function()
     if not char or not char.Parent then return end
     local killer = findKiller()
     if not killer then
         if taliBeam then taliBeam.Enabled = false end
+        if currentHL then
+            local old = currentHL:FindFirstChild("DaddyRed")
+            if old then old:Destroy() end
+            currentHL = nil
+        end
         return
     end
 
@@ -190,30 +227,26 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
+    -- AUTO FIRE PAKAI REMOTE ATAU TOOL
     if CFG.AutoFire and tick() - lastFire > CFG.FireRate then
         lastFire = tick()
+        if CFG.UseRemote and remoteHit then
+            pcall(function()
+                remoteHit:FireServer(killer)
+            end)
+        end
         local tool = char:FindFirstChildOfClass("Tool")
         if tool then
             pcall(function() tool:Activate() end)
-        else
-            local params = RaycastParams.new()
-            params.FilterDescendantsInstances = {char}
-            params.FilterType = Enum.RaycastFilterType.Exclude
-            local origin = cam.CFrame.Position
-            local dir = (targetPart.Position - origin).Unit * CFG.Range
-            local result = workspace:Raycast(origin, dir, params)
-            if result and result.Instance and result.Instance:IsDescendantOf(killer) then
-                killer.Humanoid:TakeDamage(35)
-            end
         end
     end
 end)
 
--- ANTI GRAB SMOOTH: cooldown 1 detik, GA maksa speed, GA teleport
+-- ===== ANTI GRAB LOOP =====
 local lastRelease = 0
 RunService.Heartbeat:Connect(function()
     if not char or not char.Parent then return end
-    
+
     if CFG.AntiGrab then
         local beingHeld = false
         if char:FindFirstChild("HRP_Clone") then beingHeld = true end
@@ -221,31 +254,25 @@ RunService.Heartbeat:Connect(function()
         if hum.PlatformStand then beingHeld = true end
         if hum.Sit then beingHeld = true end
         if root.Anchored then beingHeld = true end
-        
-        -- Cooldown 1 detik, cuma lepas kalau bener-bener digendong
+
         if beingHeld and tick() - lastRelease > 1 then
             lastRelease = tick()
             log("DIGENDONG → release")
             forceRelease()
-                pcall(function()
-    local cancel = game.ReplicatedStorage.Remotes.Killers.Stalker.CancelGrabHitbox
-    cancel:FireServer()
-end)
         end
     end
-    
-    -- Cuma unanchor kalau memang anchored
-    if root.Anchored then
-        root.Anchored = false
-    end
+
+    if root.Anchored then root.Anchored = false end
 end)
 
+-- ===== RESPAWN =====
 player.CharacterAdded:Connect(function(c)
     char = c
     hum = c:WaitForChild("Humanoid")
     root = c:WaitForChild("HumanoidRootPart")
     taliBeam = nil
     taliAtt1 = nil
+    currentHL = nil
     lastRelease = 0
     task.wait(1)
     pcall(function()
@@ -257,4 +284,4 @@ player.CharacterAdded:Connect(function(c)
     end)
 end)
 
-log("Killer Lock v7 aktif ☕")
+log("Killer Lock v10 aktif ☕")
