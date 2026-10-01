@@ -165,40 +165,60 @@ local function makeTali()
 end
 
 -- ANTI GRAB: bersihin semua constraint yang nyambung keluar
-local function cleanConstraints()
-    local removed = 0
-    -- dari dalam karakter
+local function forceRelease()
+    -- 1. Hapus HRP_Clone
     for _, obj in pairs(char:GetDescendants()) do
-        local cls = obj.ClassName
-        if cls:find("Weld") or cls:find("Motor") or cls:find("Snap") 
-        or cls:find("Align") or cls:find("Constraint") 
-        or cls:find("Rope") or cls:find("Rod") then
+        if obj.Name == "HRP_Clone" then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+    
+    -- 2. Hapus Weld/WeldConstraint ke HRP_Clone
+    for _, obj in pairs(char:GetDescendants()) do
+        if obj:IsA("Weld") or obj:IsA("WeldConstraint") then
             local p0 = obj.Part0
             local p1 = obj.Part1
-            local p0Out = p0 and not p0:IsDescendantOf(char)
-            local p1Out = p1 and not p1:IsDescendantOf(char)
-            if p0Out or p1Out then
-                obj:Destroy()
-                removed = removed + 1
+            local p0Name = p0 and p0.Name or ""
+            local p1Name = p1 and p1.Name or ""
+            if p0Name:find("HRP_Clone") or p1Name:find("HRP_Clone") then
+                pcall(function() obj:Destroy() end)
             end
         end
     end
-    -- dari luar karakter yang nyambung ke karakter
-    for _, obj in pairs(workspace:GetDescendants()) do
-        local cls = obj.ClassName
-        if cls:find("Weld") or cls:find("Motor") or cls:find("Snap") 
-        or cls:find("Align") or cls:find("Constraint") then
-            local p0 = obj.Part0
-            local p1 = obj.Part1
-            local refsChar = (p0 and p0:IsDescendantOf(char)) 
-                or (p1 and p1:IsDescendantOf(char))
-            if refsChar then
-                obj:Destroy()
-                removed = removed + 1
-            end
+    
+    -- 3. Hapus isi folder RagdollConstraints
+    local ragdoll = char:FindFirstChild("RagdollConstraints")
+    if ragdoll then
+        for _, obj in pairs(ragdoll:GetChildren()) do
+            pcall(function() obj:Destroy() end)
         end
     end
-    return removed
+    
+    -- 4. Hapus BallSocket/Align/Rope/Rod
+    for _, obj in pairs(char:GetDescendants()) do
+        if obj:IsA("BallSocketConstraint") 
+        or obj:IsA("AlignPosition") 
+        or obj:IsA("AlignOrientation")
+        or obj:IsA("RopeConstraint")
+        or obj:IsA("RodConstraint") then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+    
+    -- 5. Lepas state
+    pcall(function()
+        root.Anchored = false
+        hum.PlatformStand = false
+        hum.Sit = false
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        hum.WalkSpeed = 50
+        hum.JumpPower = 100
+    end)
+    
+    -- 6. Teleport dikit ke atas
+    pcall(function()
+        root.CFrame = root.CFrame + Vector3.new(0, 5, 0)
+    end)
 end
 
 -- MAIN LOOP
@@ -251,18 +271,24 @@ end)
 RunService.Heartbeat:Connect(function()
     if not char or not char.Parent then return end
     if CFG.AntiGrab then
-        local n = cleanConstraints()
-        if n > 0 then log("Lepas constraint:", n) end
-        pcall(function()
-            hum.PlatformStand = false
-            hum.Sit = false
-        end)
-    end
-    if CFG.AntiHang then
-        if root.Anchored then root.Anchored = false end
-        if hum.PlatformStand or hum.Sit then
-            root.Velocity = Vector3.new(0, -50, 0)
+        local beingHeld = false
+        if char:FindFirstChild("HRP_Clone") then beingHeld = true end
+        if char:FindFirstChild("RagdollConstraints") then beingHeld = true end
+        if hum.PlatformStand or hum.Sit or root.Anchored then beingHeld = true end
+        if hum.WalkSpeed < 5 then beingHeld = true end
+        
+        if beingHeld then
+            log("DIGENDONG → force release")
+            forceRelease()
         end
+    end
+    
+    if CFG.ForceUnanchor and root.Anchored then
+        root.Anchored = false
+    end
+    if CFG.ForceWalkSpeed then
+        if hum.WalkSpeed < CFG.WalkSpeed then hum.WalkSpeed = CFG.WalkSpeed end
+        if hum.JumpPower < CFG.JumpPower then hum.JumpPower = CFG.JumpPower end
     end
 end)
 
