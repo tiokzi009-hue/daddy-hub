@@ -67,7 +67,7 @@ end)
 local gui = player:WaitForChild("PlayerGui")
 local btn = Instance.new("TextButton")
 btn.Size = UDim2.new(0,120,0,60)
-btn.Position = UDim2.new(1,-140,0.5,0)
+btn.Position = UDim2.new(0, 20, 0, 100)
 btn.BackgroundColor3 = Color3.fromRGB(180,0,0)
 btn.Text = "BRUTAL"
 btn.TextColor3 = Color3.new(1,1,1)
@@ -81,3 +81,8 @@ end)
 _G.ToggleBrutal = function(s) CFG.Auto = s end
 
 print("[DADDY] Brutal Mode aktif☕")
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "DADDY",
+    Text = "Brutal Mode aktif☕",
+    Duration = 5
+})
