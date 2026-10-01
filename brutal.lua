@@ -64,15 +64,27 @@ UIS.TouchTap:Connect(function(pos, processed)
 end)
 
 -- tombol BRUTAL
+-- tombol BRUTAL
 local gui = player:WaitForChild("PlayerGui")
+
+local screen = Instance.new("ScreenGui")
+screen.Name = "DaddyBrutalUI"
+screen.ResetOnSpawn = false
+screen.IgnoreGuiInset = true
+screen.DisplayOrder = 999
+screen.Parent = gui
+
 local btn = Instance.new("TextButton")
-btn.Size = UDim2.new(0,120,0,60)
+btn.Size = UDim2.new(0, 150, 0, 70)
 btn.Position = UDim2.new(0, 20, 0, 100)
-btn.BackgroundColor3 = Color3.fromRGB(180,0,0)
+btn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
 btn.Text = "BRUTAL"
-btn.TextColor3 = Color3.new(1,1,1)
+btn.TextColor3 = Color3.new(1, 1, 1)
 btn.TextScaled = true
-btn.Parent = gui
+btn.Font = Enum.Font.GothamBold
+btn.ZIndex = 10
+btn.Parent = screen
+
 btn.MouseButton1Click:Connect(function()
     local t = findGuard()
     if t then hit(t) end
