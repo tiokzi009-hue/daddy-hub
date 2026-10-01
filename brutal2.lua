@@ -1,5 +1,5 @@
--- DADDY KILLER LOCK v4
--- Violence District | Player Killer Detection + Anti Grab
+-- DADDY KILLER LOCK v7
+-- Violence District | Anti Grab Smooth
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -25,104 +25,49 @@ local CFG = {
     ForceRed = true,
     ShowTali = true,
     AntiGrab = true,
-    AntiHang = true,
     Range = 1000,
     FireRate = 0.15,
     Debug = true,
-    TargetAllPlayers = false, -- true = anggap semua player lain killer
+    WalkSpeed = 30,
+    JumpPower = 60,
 }
 
 local function log(...)
     if CFG.Debug then print("[DADDY]", ...) end
 end
 
--- CEK APAKAH PLAYER INI KILLER
-local function isKillerPlayer(plr)
-    if not plr or plr == player then return false end
-    if not plr.Character or not plr.Character:FindFirstChild("Humanoid") then return false end
-    if plr.Character.Humanoid.Health <= 0 then return false end
-
-    -- cek nama player
-    local n = plr.Name:lower()
-    local dn = plr.DisplayName and plr.DisplayName:lower() or ""
-    if n:find("killer") or dn:find("killer") then return true end
-
-    -- cek atribut di player
-    if plr:GetAttribute("IsKiller") or plr:GetAttribute("isKiller") 
-    or plr:GetAttribute("Killer") or plr:GetAttribute("Role") == "Killer" then
-        return true
-    end
-
-    -- cek atribut di karakter
-    local c = plr.Character
-    if c:GetAttribute("IsKiller") or c:GetAttribute("isKiller") 
-    or c:GetAttribute("Role") == "Killer" then
-        return true
-    end
-
-    -- cek Team
-    if plr.Team and plr.Team.Name:lower():find("killer") then return true end
-
-    -- cek leaderstats / tag
-    local ls = plr:FindFirstChild("leaderstats")
-    if ls then
-        for _, v in pairs(ls:GetChildren()) do
-            if tostring(v.Value):lower():find("killer") then return true end
-        end
-    end
-
-    -- cek tag di Humanoid
-    local h = c:FindFirstChild("Humanoid")
-    if h then
-        for _, tag in pairs(h:GetChildren()) do
-            if tag:IsA("ObjectValue") and tostring(tag.Value):lower():find("killer") then
-                return true
-            end
-        end
-    end
-
-    return CFG.TargetAllPlayers
-end
-
--- CARI KILLER PLAYER TERDEKAT
+-- CARI KILLER PLAYER
 local function findKiller()
     local closest, dist = nil, CFG.Range
-
     for _, plr in pairs(Players:GetPlayers()) do
-        if isKillerPlayer(plr) then
+        if plr ~= player then
             local c = plr.Character
-            local hrp = c:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local d = (hrp.Position - root.Position).Magnitude
-                if d < dist then
-                    dist = d
-                    closest = c
-                end
-            end
-        end
-    end
-
-    -- fallback: NPC killer di workspace
-    if not closest then
-        for _, obj in pairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
-                if obj.Humanoid.Health > 0 and obj ~= char then
-                    local n = obj.Name:lower()
-                    if n == "killer" or n:find("killer") then
-                        local hrp = obj:FindFirstChild("HumanoidRootPart")
-                        if hrp then
-                            local d = (hrp.Position - root.Position).Magnitude
-                            if d < dist then
-                                dist = d
-                                closest = obj
-                            end
-                        end
+            if c and c:FindFirstChild("Humanoid") and c.Humanoid.Health > 0 then
+                local hrp = c:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local d = (hrp.Position - root.Position).Magnitude
+                    if d < dist then
+                        dist = d
+                        closest = c
                     end
                 end
             end
         end
     end
-
+    -- fallback NPC
+    if not closest then
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj ~= char then
+                if obj.Humanoid.Health > 0 and obj.Name:lower():find("killer") then
+                    local hrp = obj:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local d = (hrp.Position - root.Position).Magnitude
+                        if d < dist then dist, closest = d, obj end
+                    end
+                end
+            end
+        end
+    end
     return closest
 end
 
@@ -134,11 +79,10 @@ local function paintRed(model)
     hl.Name = "DaddyRed"
     hl.FillColor = Color3.fromRGB(255, 0, 0)
     hl.OutlineColor = Color3.fromRGB(255, 50, 50)
-    hl.FillTransparency = 0.5
+    hl.FillTransparency = 0.4
     hl.OutlineTransparency = 0
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     hl.Parent = model
-    log("Paint merah:", model.Name)
 end
 
 -- TALI
@@ -156,24 +100,24 @@ local function makeTali()
     beam.Attachment0 = att0
     beam.Attachment1 = att1
     beam.Color = ColorSequence.new(Color3.fromRGB(0, 255, 120))
-    beam.Width0 = 0.15
-    beam.Width1 = 0.15
+    beam.Width0 = 0.2
+    beam.Width1 = 0.2
     beam.FaceCamera = true
     beam.Parent = root
     taliBeam = beam
     taliAtt1 = att1
 end
 
--- ANTI GRAB: bersihin semua constraint yang nyambung keluar
+-- ANTI GRAB: bersih TANPA teleport, TANPA force speed
 local function forceRelease()
-    -- 1. Hapus HRP_Clone
+    -- Hapus HRP_Clone
     for _, obj in pairs(char:GetDescendants()) do
         if obj.Name == "HRP_Clone" then
             pcall(function() obj:Destroy() end)
         end
     end
     
-    -- 2. Hapus Weld/WeldConstraint ke HRP_Clone
+    -- Hapus Weld/WeldConstraint ke HRP_Clone
     for _, obj in pairs(char:GetDescendants()) do
         if obj:IsA("Weld") or obj:IsA("WeldConstraint") then
             local p0 = obj.Part0
@@ -186,7 +130,7 @@ local function forceRelease()
         end
     end
     
-    -- 3. Hapus isi folder RagdollConstraints
+    -- Hapus isi folder RagdollConstraints
     local ragdoll = char:FindFirstChild("RagdollConstraints")
     if ragdoll then
         for _, obj in pairs(ragdoll:GetChildren()) do
@@ -194,7 +138,7 @@ local function forceRelease()
         end
     end
     
-    -- 4. Hapus BallSocket/Align/Rope/Rod
+    -- Hapus BallSocket / Align / Rope / Rod
     for _, obj in pairs(char:GetDescendants()) do
         if obj:IsA("BallSocketConstraint") 
         or obj:IsA("AlignPosition") 
@@ -205,23 +149,15 @@ local function forceRelease()
         end
     end
     
-    -- 5. Lepas state
+    -- Lepas state, TANPA teleport, TANPA force speed
     pcall(function()
         root.Anchored = false
         hum.PlatformStand = false
         hum.Sit = false
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        hum.WalkSpeed = 50
-        hum.JumpPower = 100
-    end)
-    
-    -- 6. Teleport dikit ke atas
-    pcall(function()
-        root.CFrame = root.CFrame + Vector3.new(0, 5, 0)
     end)
 end
 
--- MAIN LOOP
+-- MAIN LOOP: AIM + FIRE
 local lastFire = 0
 RunService.RenderStepped:Connect(function()
     if not char or not char.Parent then return end
@@ -246,6 +182,12 @@ RunService.RenderStepped:Connect(function()
     local targetPart = (CFG.Headshot and head) or hrp
     if targetPart then
         cam.CFrame = CFrame.new(cam.CFrame.Position, targetPart.Position)
+        local tool = char:FindFirstChildOfClass("Tool")
+        if tool and tool:FindFirstChild("Handle") then
+            pcall(function()
+                tool.Handle.CFrame = CFrame.new(tool.Handle.Position, targetPart.Position)
+            end)
+        end
     end
 
     if CFG.AutoFire and tick() - lastFire > CFG.FireRate then
@@ -267,28 +209,30 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ANTI GRAB
+-- ANTI GRAB SMOOTH: cooldown 1 detik, GA maksa speed, GA teleport
+local lastRelease = 0
 RunService.Heartbeat:Connect(function()
     if not char or not char.Parent then return end
+    
     if CFG.AntiGrab then
         local beingHeld = false
         if char:FindFirstChild("HRP_Clone") then beingHeld = true end
         if char:FindFirstChild("RagdollConstraints") then beingHeld = true end
-        if hum.PlatformStand or hum.Sit or root.Anchored then beingHeld = true end
-        if hum.WalkSpeed < 5 then beingHeld = true end
+        if hum.PlatformStand then beingHeld = true end
+        if hum.Sit then beingHeld = true end
+        if root.Anchored then beingHeld = true end
         
-        if beingHeld then
-            log("DIGENDONG → force release")
+        -- Cooldown 1 detik, cuma lepas kalau bener-bener digendong
+        if beingHeld and tick() - lastRelease > 1 then
+            lastRelease = tick()
+            log("DIGENDONG → release")
             forceRelease()
         end
     end
     
-    if CFG.ForceUnanchor and root.Anchored then
+    -- Cuma unanchor kalau memang anchored
+    if root.Anchored then
         root.Anchored = false
-    end
-    if CFG.ForceWalkSpeed then
-        if hum.WalkSpeed < CFG.WalkSpeed then hum.WalkSpeed = CFG.WalkSpeed end
-        if hum.JumpPower < CFG.JumpPower then hum.JumpPower = CFG.JumpPower end
     end
 end)
 
@@ -298,6 +242,7 @@ player.CharacterAdded:Connect(function(c)
     root = c:WaitForChild("HumanoidRootPart")
     taliBeam = nil
     taliAtt1 = nil
+    lastRelease = 0
     task.wait(1)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
@@ -308,4 +253,4 @@ player.CharacterAdded:Connect(function(c)
     end)
 end)
 
-log("Killer Lock v4 aktif ☕")
+log("Killer Lock v7 aktif ☕")
