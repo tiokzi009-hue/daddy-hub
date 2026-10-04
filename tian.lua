@@ -1,6 +1,6 @@
 --========================================================--
--- SCRIPT TIAN v2 🚬
--- Steal an Egg | Auto Take + Anti Trap + Anti Guard + GUI
+-- SCRIPT TIAN v3 🚬
+-- Steal an Egg | AUTO FULL + Anti Trap + Anti Guard + GUI
 --========================================================--
 
 _G.tian = _G.tian or {}
@@ -21,7 +21,7 @@ local cam = workspace.CurrentCamera
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "TIAN",
-        Text = "script tian v2 aktif 🚬",
+        Text = "script tian v3 aktif 🚬",
         Duration = 5
     })
 end)
@@ -30,10 +30,12 @@ end)
 -- CONFIG
 --========================================================--
 _G.tian.CFG = {
-    Range = 2000,
-    FireRate = 0.2,
+    FlySpeed = 120,
+    TrapRadius = 15,
+    GuardRadius = 25,
+    ClubRange = 15,
+    AutoLoop = true,       -- ulang terus
     Debug = true,
-    LogoImageId = "",
     LogoText = "T",
 }
 
@@ -42,29 +44,69 @@ local function log(...)
 end
 
 --========================================================--
--- REMOTE REFERENCES
+-- REMOTE PATH HELPER (pakai slash bener)
 --========================================================--
-local Net = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Networking")
+local function getRemote(path)
+    local current = ReplicatedStorage
+    for segment in string.gmatch(path, "[^%.]+") do
+        current = current:FindFirstChild(segment)
+        if not current then return nil end
+    end
+    return current
+end
 
-local REMOTES = {
-    EggCarry      = Net:FindFirstChild("RF/EggWorld/AskFieldEggCarry"),
-    EggDrop       = Net:FindFirstChild("RF/EggWorld/AskFieldEggDrop"),
-    EggPlace      = Net:FindFirstChild("RF/EggWorld/AskPlaceEgg"),
-    EggHatch      = Net:FindFirstChild("RF/EggWorld/AskHatch"),
-    EggSnapshot   = Net:FindFirstChild("RF/EggWorld/AskFieldEggSnapshot"),
-    EggRarity     = Net:FindFirstChild("RF/EggWorld/AskFieldEggRarityShows"),
-    TrapSet       = Net:FindFirstChild("RE/MineTrap/TrapSet"),
-    TrapPlace     = Net:FindFirstChild("RE/TrapPlacement/AskPlace"),
-    GuardStrike   = Net:FindFirstChild("RE/GuardPatrol/ForestStrike"),
-    GuardEnabled  = Net:FindFirstChild("RF/GuardPatrol/AskEnabled"),
-}
+local RF_EggCarry   = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggCarry")
+local RF_EggDrop    = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggDrop")
+local RF_EggPlace   = getRemote("Packages.Networking.RF/EggWorld.AskPlaceEgg")
+local RF_EggHatch   = getRemote("Packages.Networking.RF/EggWorld.AskHatch")
+local RF_EggSnap    = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggSnapshot")
+local RF_EggRarity  = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggRarityShows")
 
-for k, v in pairs(REMOTES) do
-    log(k .. ":", v and "OK" or "NIL")
+log("EggCarry:", RF_EggCarry and "OK" or "NIL")
+log("EggDrop:", RF_EggDrop and "OK" or "NIL")
+log("EggPlace:", RF_EggPlace and "OK" or "NIL")
+
+--========================================================--
+-- FLY (BV + BodyVelocity)
+--========================================================--
+local bv = nil
+local bg = nil
+
+local function startFly()
+    if not char or not root then return end
+    if bv then bv:Destroy() end
+    if bg then bg:Destroy() end
+    bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+    bv.Velocity = Vector3.zero
+    bv.Parent = root
+    bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+    bg.P = 1e4
+    bg.Parent = root
+end
+
+local function stopFly()
+    if bv then bv:Destroy() bv = nil end
+    if bg then bg:Destroy() bg = nil end
+end
+
+local function flyTo(pos)
+    if not root or not bv then return end
+    local dir = (pos - root.Position)
+    local dist = dir.Magnitude
+    if dist > 3 then
+        bv.Velocity = dir.Unit * _G.tian.CFG.FlySpeed
+    else
+        bv.Velocity = Vector3.zero
+    end
+    bg.CFrame = CFrame.new(root.Position, pos)
+    hum.PlatformStand = true
+    if hum.PlatformStand then end
 end
 
 --========================================================--
--- FIND BEST EGG
+-- FIND BEST EGG (dari folder NestModel)
 --========================================================--
 local function findAllEggs()
     local list = {}
@@ -82,7 +124,8 @@ local function findAllEggs()
                 if nest.Name:find("NestModel") then
                     for _, egg in pairs(nest:GetDescendants()) do
                         if egg:IsA("Model") or egg:IsA("BasePart") then
-                            if egg.Name:lower():find("egg") or egg.Name:lower():find("telur") then
+                            local n = egg.Name:lower()
+                            if n:find("egg") or n:find("telur") then
                                 table.insert(list, egg)
                             end
                         end
@@ -111,15 +154,13 @@ local function findBestEgg()
     local best, bestRank = nil, 0
     for _, egg in pairs(eggs) do
         local r = eggRank(egg)
-        if r > bestRank then
-            bestRank = r
-            best = egg
-        end
+        if r > bestRank then bestRank = r; best = egg end
     end
     return best
 end
 
 local function getEggPos(egg)
+    if not egg then return nil end
     if egg:IsA("Model") then
         local p = egg.PrimaryPart or egg:FindFirstChildWhichIsA("BasePart")
         return p and p.Position or nil
@@ -130,15 +171,40 @@ local function getEggPos(egg)
 end
 
 --========================================================--
--- ANTI TRAP
+-- FIND BASE (Markas)
+--========================================================--
+local function findBase()
+    for _, obj in pairs(workspace:GetDescendants()) do
+        local n = obj.Name:lower()
+        if n:find("base") or n:find("markas") or n:find("deposit") then
+            if obj:IsA("Model") or obj:IsA("BasePart") then
+                return obj
+            end
+        end
+    end
+    return nil
+end
+
+local function getBasePos(base)
+    if not base then return nil end
+    if base:IsA("Model") then
+        local p = base.PrimaryPart or base:FindFirstChildWhichIsA("BasePart")
+        return p and p.Position or nil
+    elseif base:IsA("BasePart") then
+        return base.Position
+    end
+    return nil
+end
+
+--========================================================--
+-- ANTI TRAP / GUARD / HIT
 --========================================================--
 local function antiTrap()
-    if not _G.tian.Settings.AntiTrap then return end
     for _, obj in pairs(workspace:GetDescendants()) do
         if obj:IsA("BasePart") then
             local n = obj.Name:lower()
             if n:find("mine") or n:find("trap") or n:find("jebakan") then
-                if (obj.Position - root.Position).Magnitude < 12 then
+                if (obj.Position - root.Position).Magnitude < _G.tian.CFG.TrapRadius then
                     pcall(function()
                         obj.CanTouch = false
                         obj.CanCollide = false
@@ -150,17 +216,13 @@ local function antiTrap()
     end
 end
 
---========================================================--
--- ANTI GUARD
---========================================================--
 local function antiGuard()
-    if not _G.tian.Settings.AntiGuard then return end
     for _, obj in pairs(workspace:GetDescendants()) do
         if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
             local n = obj.Name:lower()
             if n:find("guard") or n:find("penjaga") then
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
-                if hrp and (hrp.Position - root.Position).Magnitude < 20 then
+                if hrp and (hrp.Position - root.Position).Magnitude < _G.tian.CFG.GuardRadius then
                     pcall(function()
                         obj.Humanoid.WalkSpeed = 0
                         obj.Humanoid.JumpPower = 0
@@ -171,11 +233,7 @@ local function antiGuard()
     end
 end
 
---========================================================--
--- ANTI HIT
---========================================================--
 local function antiHit()
-    if not _G.tian.Settings.AntiHit then return end
     for _, obj in pairs(char:GetDescendants()) do
         if obj:IsA("Weld") or obj:IsA("WeldConstraint") then
             local p0, p1 = obj.Part0, obj.Part1
@@ -190,7 +248,7 @@ local function antiHit()
 end
 
 --========================================================--
--- AUTO CLUB ATTACKER
+-- CLUB ATTACKER
 --========================================================--
 local function clubAttacker(targetPlr)
     if not targetPlr or not targetPlr.Character then return end
@@ -199,8 +257,7 @@ local function clubAttacker(targetPlr)
         if obj:IsA("Tool") then
             local n = obj.Name:lower()
             if n:find("club") or n:find("pentung") or n:find("bat") or n:find("stick") then
-                club = obj
-                break
+                club = obj; break
             end
         end
     end
@@ -212,7 +269,76 @@ local function clubAttacker(targetPlr)
 end
 
 --========================================================--
--- GUI + LOGO BULAT HURUF "T"
+-- AUTO LOOP (Ambil → Terbang ke Markas → Taruh)
+--========================================================--
+local autoState = "idle"  -- idle / flyToEgg / carryEgg / flyToBase / deposit
+
+local function runAutoLoop()
+    if not _G.tian.Settings.AutoFull then
+        if autoState ~= "idle" then
+            stopFly()
+            autoState = "idle"
+        end
+        return
+    end
+
+    if not char or not char.Parent then return end
+
+    if autoState == "idle" then
+        local bestEgg = findBestEgg()
+        if bestEgg then
+            local pos = getEggPos(bestEgg)
+            if pos then
+                startFly()
+                autoState = "flyToEgg"
+                log("Terbang ke egg:", bestEgg.Name)
+            end
+        end
+
+    elseif autoState == "flyToEgg" then
+        local bestEgg = findBestEgg()
+        if not bestEgg then
+            stopFly()
+            autoState = "idle"
+            return
+        end
+        local pos = getEggPos(bestEgg)
+        if pos then
+            flyTo(pos)
+            if (pos - root.Position).Magnitude < 8 then
+                -- udah deket → ambil
+                if RF_EggCarry then
+                    pcall(function() RF_EggCarry:InvokeServer(bestEgg) end)
+                end
+                autoState = "flyToBase"
+                log("Egg diambil, terbang ke markas")
+            end
+        end
+
+    elseif autoState == "flyToBase" then
+        local base = findBase()
+        local basePos = getBasePos(base)
+        if basePos then
+            flyTo(basePos)
+            if (basePos - root.Position).Magnitude < 10 then
+                -- udah di markas → taruh
+                if RF_EggPlace then
+                    pcall(function() RF_EggPlace:InvokeServer() end)
+                end
+                stopFly()
+                autoState = "idle"
+                log("Egg ditaruh di markas")
+            end
+        else
+            -- ga nemu markas → balik idle
+            stopFly()
+            autoState = "idle"
+        end
+    end
+end
+
+--========================================================--
+-- GUI + LOGO BULAT
 --========================================================--
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "TianUI"
@@ -223,7 +349,7 @@ ScreenGui.Parent = player:WaitForChild("PlayerGui")
 local Main = Instance.new("Frame")
 Main.AnchorPoint = Vector2.new(0, 0.5)
 Main.Position = UDim2.new(0, 10, 0.5, 0)
-Main.Size = UDim2.new(0, 220, 0, 320)
+Main.Size = UDim2.new(0, 220, 0, 280)
 Main.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 Main.BorderSizePixel = 0
 Main.Parent = ScreenGui
@@ -236,7 +362,6 @@ Header.BorderSizePixel = 0
 Header.Parent = Main
 Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 12)
 
--- LOGO BULAT
 local Logo = Instance.new("Frame")
 Logo.Size = UDim2.new(0, 40, 0, 40)
 Logo.Position = UDim2.new(0, 10, 0.5, -20)
@@ -254,12 +379,11 @@ LogoText.TextSize = 20
 LogoText.Font = Enum.Font.GothamBold
 LogoText.Parent = Logo
 
--- TITLE
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -65, 0, 25)
 Title.Position = UDim2.new(0, 58, 0, 8)
 Title.BackgroundTransparency = 1
-Title.Text = "script tian v2 🚬"
+Title.Text = "script tian v3 🚬"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.Font = Enum.Font.GothamBold
@@ -332,9 +456,8 @@ local function makeToggle(name, key, default)
     end)
 end
 
-makeToggle("Auto Ambil Telur", "AutoTake", true)
-makeToggle("Auto Ke Markas", "AutoDeposit", true)
-makeToggle("ESP Telur Terbaik", "EggESP", true)
+-- SATU TOMBOL AUTO
+makeToggle("AUTO EGG FULL", "AutoFull", true)
 makeToggle("Anti Trap", "AntiTrap", true)
 makeToggle("Anti Pukul", "AntiHit", true)
 makeToggle("Anti Penjaga", "AntiGuard", true)
@@ -377,36 +500,12 @@ end)
 --========================================================--
 -- MAIN LOOP
 --========================================================--
-RunService.RenderStepped:Connect(function()
+RunService.Heartbeat:Connect(function()
     if not char or not char.Parent then return end
-
     if _G.tian.Settings.AntiTrap then antiTrap() end
     if _G.tian.Settings.AntiHit then antiHit() end
     if _G.tian.Settings.AntiGuard then antiGuard() end
-
-    local bestEgg = findBestEgg()
-    if bestEgg then
-        local eggPos = getEggPos(bestEgg)
-
-        if _G.tian.Settings.EggESP then
-            if not bestEgg:FindFirstChild("TianESP") then
-                local hl = Instance.new("Highlight")
-                hl.Name = "TianESP"
-                hl.FillColor = Color3.fromRGB(180, 100, 255)
-                hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                hl.Parent = bestEgg
-            end
-        end
-
-        if _G.tian.Settings.AutoTake and eggPos then
-            if (eggPos - root.Position).Magnitude < 12 then
-                if REMOTES.EggCarry then
-                    pcall(function() REMOTES.EggCarry:InvokeServer(bestEgg) end)
-                end
-            end
-        end
-    end
+    runAutoLoop()
 end)
 
 --========================================================--
@@ -416,14 +515,16 @@ player.CharacterAdded:Connect(function(c)
     char = c
     hum = c:WaitForChild("Humanoid")
     root = c:WaitForChild("HumanoidRootPart")
+    stopFly()
+    autoState = "idle"
     task.wait(1)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
             Title = "TIAN",
-            Text = "script tian v2 aktif 🚬",
+            Text = "script tian v3 aktif 🚬",
             Duration = 5
         })
     end)
 end)
 
-log("Script Tian v2 aktif 🚬")
+log("Script Tian v3 aktif 🚬")
