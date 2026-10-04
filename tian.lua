@@ -1,6 +1,6 @@
 --========================================================--
--- SCRIPT TIAN v3 🚬
--- Steal an Egg | AUTO FULL + Anti Trap + Anti Guard + GUI
+-- SCRIPT TIAN v4 🚬
+-- Steal an Egg | AUTO FULL + Fly Tinggi + Cepat + Anti All
 --========================================================--
 
 _G.tian = _G.tian or {}
@@ -21,7 +21,7 @@ local cam = workspace.CurrentCamera
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "TIAN",
-        Text = "script tian v3 aktif 🚬",
+        Text = "script tian v4 aktif 🚬",
         Duration = 5
     })
 end)
@@ -30,11 +30,12 @@ end)
 -- CONFIG
 --========================================================--
 _G.tian.CFG = {
-    FlySpeed = 120,
-    TrapRadius = 15,
-    GuardRadius = 25,
-    ClubRange = 15,
-    AutoLoop = true,       -- ulang terus
+    FlySpeed = 300,
+    FlyHeight = 40,
+    TrapRadius = 20,
+    GuardRadius = 35,
+    ClubRange = 20,
+    AutoLoop = true,
     Debug = true,
     LogoText = "T",
 }
@@ -44,7 +45,7 @@ local function log(...)
 end
 
 --========================================================--
--- REMOTE PATH HELPER (pakai slash bener)
+-- REMOTE HELPER (path pakai slash bener)
 --========================================================--
 local function getRemote(path)
     local current = ReplicatedStorage
@@ -67,10 +68,9 @@ log("EggDrop:", RF_EggDrop and "OK" or "NIL")
 log("EggPlace:", RF_EggPlace and "OK" or "NIL")
 
 --========================================================--
--- FLY (BV + BodyVelocity)
+-- FLY
 --========================================================--
-local bv = nil
-local bg = nil
+local bv, bg = nil, nil
 
 local function startFly()
     if not char or not root then return end
@@ -89,24 +89,25 @@ end
 local function stopFly()
     if bv then bv:Destroy() bv = nil end
     if bg then bg:Destroy() bg = nil end
+    pcall(function() hum.PlatformStand = false end)
 end
 
 local function flyTo(pos)
     if not root or not bv then return end
-    local dir = (pos - root.Position)
+    local target = pos + Vector3.new(0, _G.tian.CFG.FlyHeight, 0)
+    local dir = (target - root.Position)
     local dist = dir.Magnitude
-    if dist > 3 then
+    if dist > 5 then
         bv.Velocity = dir.Unit * _G.tian.CFG.FlySpeed
     else
         bv.Velocity = Vector3.zero
     end
-    bg.CFrame = CFrame.new(root.Position, pos)
+    bg.CFrame = CFrame.new(root.Position, target)
     hum.PlatformStand = true
-    if hum.PlatformStand then end
 end
 
 --========================================================--
--- FIND BEST EGG (dari folder NestModel)
+-- FIND EGG
 --========================================================--
 local function findAllEggs()
     local list = {}
@@ -171,7 +172,7 @@ local function getEggPos(egg)
 end
 
 --========================================================--
--- FIND BASE (Markas)
+-- FIND BASE
 --========================================================--
 local function findBase()
     for _, obj in pairs(workspace:GetDescendants()) do
@@ -248,7 +249,7 @@ local function antiHit()
 end
 
 --========================================================--
--- CLUB ATTACKER
+-- CLUB
 --========================================================--
 local function clubAttacker(targetPlr)
     if not targetPlr or not targetPlr.Character then return end
@@ -269,9 +270,9 @@ local function clubAttacker(targetPlr)
 end
 
 --========================================================--
--- AUTO LOOP (Ambil → Terbang ke Markas → Taruh)
+-- AUTO LOOP
 --========================================================--
-local autoState = "idle"  -- idle / flyToEgg / carryEgg / flyToBase / deposit
+local autoState = "idle"
 
 local function runAutoLoop()
     if not _G.tian.Settings.AutoFull then
@@ -281,7 +282,6 @@ local function runAutoLoop()
         end
         return
     end
-
     if not char or not char.Parent then return end
 
     if autoState == "idle" then
@@ -305,11 +305,14 @@ local function runAutoLoop()
         local pos = getEggPos(bestEgg)
         if pos then
             flyTo(pos)
-            if (pos - root.Position).Magnitude < 8 then
-                -- udah deket → ambil
-                if RF_EggCarry then
-                    pcall(function() RF_EggCarry:InvokeServer(bestEgg) end)
-                end
+            local targetPos = Vector3.new(pos.X, root.Position.Y, pos.Z)
+            local myPos = Vector3.new(root.Position.X, root.Position.Y, root.Position.Z)
+            if (targetPos - myPos).Magnitude < 15 then
+                task.spawn(function()
+                    if RF_EggCarry then
+                        pcall(function() RF_EggCarry:InvokeServer(bestEgg) end)
+                    end
+                end)
                 autoState = "flyToBase"
                 log("Egg diambil, terbang ke markas")
             end
@@ -320,17 +323,17 @@ local function runAutoLoop()
         local basePos = getBasePos(base)
         if basePos then
             flyTo(basePos)
-            if (basePos - root.Position).Magnitude < 10 then
-                -- udah di markas → taruh
-                if RF_EggPlace then
-                    pcall(function() RF_EggPlace:InvokeServer() end)
-                end
+            if (basePos - root.Position).Magnitude < 15 then
+                task.spawn(function()
+                    if RF_EggPlace then
+                        pcall(function() RF_EggPlace:InvokeServer() end)
+                    end
+                end)
                 stopFly()
                 autoState = "idle"
                 log("Egg ditaruh di markas")
             end
         else
-            -- ga nemu markas → balik idle
             stopFly()
             autoState = "idle"
         end
@@ -338,7 +341,7 @@ local function runAutoLoop()
 end
 
 --========================================================--
--- GUI + LOGO BULAT
+-- GUI
 --========================================================--
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "TianUI"
@@ -383,7 +386,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -65, 0, 25)
 Title.Position = UDim2.new(0, 58, 0, 8)
 Title.BackgroundTransparency = 1
-Title.Text = "script tian v3 🚬"
+Title.Text = "script tian v4 🚬"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.Font = Enum.Font.GothamBold
@@ -456,7 +459,6 @@ local function makeToggle(name, key, default)
     end)
 end
 
--- SATU TOMBOL AUTO
 makeToggle("AUTO EGG FULL", "AutoFull", true)
 makeToggle("Anti Trap", "AntiTrap", true)
 makeToggle("Anti Pukul", "AntiHit", true)
@@ -500,7 +502,7 @@ end)
 --========================================================--
 -- MAIN LOOP
 --========================================================--
-RunService.Heartbeat:Connect(function()
+RunService.RenderStepped:Connect(function()
     if not char or not char.Parent then return end
     if _G.tian.Settings.AntiTrap then antiTrap() end
     if _G.tian.Settings.AntiHit then antiHit() end
@@ -521,10 +523,10 @@ player.CharacterAdded:Connect(function(c)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
             Title = "TIAN",
-            Text = "script tian v3 aktif 🚬",
+            Text = "script tian v4 aktif 🚬",
             Duration = 5
         })
     end)
 end)
 
-log("Script Tian v3 aktif 🚬")
+log("Script Tian v4 aktif 🚬")
