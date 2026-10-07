@@ -1,6 +1,6 @@
 --========================================================--
--- SCRIPT TIAN v4 🚬
--- Steal an Egg | AUTO FULL + Fly Tinggi + Cepat + Anti All
+-- SCRIPT TIAN v5 🚬
+-- Steal an Egg | TELEPORT INSTAN + AUTO FULL
 --========================================================--
 
 _G.tian = _G.tian or {}
@@ -21,7 +21,7 @@ local cam = workspace.CurrentCamera
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "TIAN",
-        Text = "script tian v4 aktif 🚬",
+        Text = "script tian v5 aktif 🚬",
         Duration = 5
     })
 end)
@@ -30,12 +30,10 @@ end)
 -- CONFIG
 --========================================================--
 _G.tian.CFG = {
-    FlySpeed = 300,
-    FlyHeight = 40,
+    FlyHeight = 5,
     TrapRadius = 20,
     GuardRadius = 35,
-    ClubRange = 20,
-    AutoLoop = true,
+    LoopDelay = 0.1,
     Debug = true,
     LogoText = "T",
 }
@@ -45,7 +43,7 @@ local function log(...)
 end
 
 --========================================================--
--- REMOTE HELPER (path pakai slash bener)
+-- REMOTE HELPER
 --========================================================--
 local function getRemote(path)
     local current = ReplicatedStorage
@@ -56,55 +54,14 @@ local function getRemote(path)
     return current
 end
 
-local RF_EggCarry   = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggCarry")
-local RF_EggDrop    = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggDrop")
-local RF_EggPlace   = getRemote("Packages.Networking.RF/EggWorld.AskPlaceEgg")
-local RF_EggHatch   = getRemote("Packages.Networking.RF/EggWorld.AskHatch")
-local RF_EggSnap    = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggSnapshot")
-local RF_EggRarity  = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggRarityShows")
+local RF_EggCarry  = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggCarry")
+local RF_EggDrop   = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggDrop")
+local RF_EggPlace  = getRemote("Packages.Networking.RF/EggWorld.AskPlaceEgg")
+local RF_EggHatch  = getRemote("Packages.Networking.RF/EggWorld.AskHatch")
 
 log("EggCarry:", RF_EggCarry and "OK" or "NIL")
 log("EggDrop:", RF_EggDrop and "OK" or "NIL")
 log("EggPlace:", RF_EggPlace and "OK" or "NIL")
-
---========================================================--
--- FLY
---========================================================--
-local bv, bg = nil, nil
-
-local function startFly()
-    if not char or not root then return end
-    if bv then bv:Destroy() end
-    if bg then bg:Destroy() end
-    bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-    bv.Velocity = Vector3.zero
-    bv.Parent = root
-    bg = Instance.new("BodyGyro")
-    bg.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
-    bg.P = 1e4
-    bg.Parent = root
-end
-
-local function stopFly()
-    if bv then bv:Destroy() bv = nil end
-    if bg then bg:Destroy() bg = nil end
-    pcall(function() hum.PlatformStand = false end)
-end
-
-local function flyTo(pos)
-    if not root or not bv then return end
-    local target = pos + Vector3.new(0, _G.tian.CFG.FlyHeight, 0)
-    local dir = (target - root.Position)
-    local dist = dir.Magnitude
-    if dist > 5 then
-        bv.Velocity = dir.Unit * _G.tian.CFG.FlySpeed
-    else
-        bv.Velocity = Vector3.zero
-    end
-    bg.CFrame = CFrame.new(root.Position, target)
-    hum.PlatformStand = true
-end
 
 --========================================================--
 -- FIND EGG
@@ -249,94 +206,64 @@ local function antiHit()
 end
 
 --========================================================--
--- CLUB
---========================================================--
-local function clubAttacker(targetPlr)
-    if not targetPlr or not targetPlr.Character then return end
-    local club = nil
-    for _, obj in pairs(char:GetChildren()) do
-        if obj:IsA("Tool") then
-            local n = obj.Name:lower()
-            if n:find("club") or n:find("pentung") or n:find("bat") or n:find("stick") then
-                club = obj; break
-            end
-        end
-    end
-    if not club then return end
-    local hrp = targetPlr.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    cam.CFrame = CFrame.new(cam.CFrame.Position, hrp.Position)
-    pcall(function() club:Activate() end)
-end
-
---========================================================--
--- AUTO LOOP
+-- AUTO LOOP — TELEPORT INSTAN
 --========================================================--
 local autoState = "idle"
+local lastAction = 0
 
 local function runAutoLoop()
     if not _G.tian.Settings.AutoFull then
-        if autoState ~= "idle" then
-            stopFly()
-            autoState = "idle"
-        end
+        autoState = "idle"
         return
     end
-    if not char or not char.Parent then return end
+    if not char or not char.Parent or not root then return end
 
+    local now = tick()
+    if now - lastAction < _G.tian.CFG.LoopDelay then return end
+
+    -- CARI TELUR → LANGSUNG TELEPORT
     if autoState == "idle" then
         local bestEgg = findBestEgg()
         if bestEgg then
             local pos = getEggPos(bestEgg)
             if pos then
-                startFly()
-                autoState = "flyToEgg"
-                log("Terbang ke egg:", bestEgg.Name)
+                root.CFrame = CFrame.new(pos + Vector3.new(0, _G.tian.CFG.FlyHeight, 0))
+                autoState = "grabEgg"
+                lastAction = now
+                log("Teleport ke egg:", bestEgg.Name)
             end
         end
 
-    elseif autoState == "flyToEgg" then
+    -- AMBIL TELUR → LANGSUNG TELEPORT KE MARKAS
+    elseif autoState == "grabEgg" then
         local bestEgg = findBestEgg()
-        if not bestEgg then
-            stopFly()
-            autoState = "idle"
-            return
+        if bestEgg and RF_EggCarry then
+            task.spawn(function()
+                pcall(function() RF_EggCarry:InvokeServer(bestEgg) end)
+            end)
         end
-        local pos = getEggPos(bestEgg)
-        if pos then
-            flyTo(pos)
-            local targetPos = Vector3.new(pos.X, root.Position.Y, pos.Z)
-            local myPos = Vector3.new(root.Position.X, root.Position.Y, root.Position.Z)
-            if (targetPos - myPos).Magnitude < 15 then
-                task.spawn(function()
-                    if RF_EggCarry then
-                        pcall(function() RF_EggCarry:InvokeServer(bestEgg) end)
-                    end
-                end)
-                autoState = "flyToBase"
-                log("Egg diambil, terbang ke markas")
-            end
-        end
-
-    elseif autoState == "flyToBase" then
         local base = findBase()
         local basePos = getBasePos(base)
         if basePos then
-            flyTo(basePos)
-            if (basePos - root.Position).Magnitude < 15 then
-                task.spawn(function()
-                    if RF_EggPlace then
-                        pcall(function() RF_EggPlace:InvokeServer() end)
-                    end
-                end)
-                stopFly()
-                autoState = "idle"
-                log("Egg ditaruh di markas")
-            end
+            root.CFrame = CFrame.new(basePos + Vector3.new(0, _G.tian.CFG.FlyHeight, 0))
+            autoState = "deposit"
+            lastAction = now
+            log("Teleport ke markas")
         else
-            stopFly()
             autoState = "idle"
         end
+
+    -- TARUH DI MARKAS
+    elseif autoState == "deposit" then
+        if RF_EggPlace then
+            task.spawn(function()
+                pcall(function() RF_EggPlace:InvokeServer() end)
+            end)
+        end
+        task.wait(0.05)
+        autoState = "idle"
+        lastAction = now
+        log("Egg ditaruh, ulang")
     end
 end
 
@@ -386,7 +313,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -65, 0, 25)
 Title.Position = UDim2.new(0, 58, 0, 8)
 Title.BackgroundTransparency = 1
-Title.Text = "script tian v4 🚬"
+Title.Text = "script tian v5 🚬"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.Font = Enum.Font.GothamBold
@@ -517,16 +444,16 @@ player.CharacterAdded:Connect(function(c)
     char = c
     hum = c:WaitForChild("Humanoid")
     root = c:WaitForChild("HumanoidRootPart")
-    stopFly()
     autoState = "idle"
+    lastAction = 0
     task.wait(1)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
             Title = "TIAN",
-            Text = "script tian v4 aktif 🚬",
+            Text = "script tian v5 aktif 🚬",
             Duration = 5
         })
     end)
 end)
 
-log("Script Tian v4 aktif 🚬")
+log("Script Tian v5 aktif 🚬")
