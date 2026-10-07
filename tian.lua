@@ -1,6 +1,6 @@
 --========================================================--
--- SCRIPT TIAN v5 🚬
--- Steal an Egg | TELEPORT INSTAN + AUTO FULL
+-- SCRIPT TIAN v7 🚬
+-- Steal an Egg | Manual Toggle + Teleport Stabil
 --========================================================--
 
 _G.tian = _G.tian or {}
@@ -21,7 +21,7 @@ local cam = workspace.CurrentCamera
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "TIAN",
-        Text = "script tian v5 aktif 🚬",
+        Text = "script tian v7 siap 🚬",
         Duration = 5
     })
 end)
@@ -30,10 +30,10 @@ end)
 -- CONFIG
 --========================================================--
 _G.tian.CFG = {
-    FlyHeight = 5,
-    TrapRadius = 20,
-    GuardRadius = 35,
-    LoopDelay = 0.1,
+    FlyHeight = 8,
+    TrapRadius = 25,
+    GuardRadius = 40,
+    LoopDelay = 0.8,
     Debug = true,
     LogoText = "T",
 }
@@ -54,18 +54,20 @@ local function getRemote(path)
     return current
 end
 
-local RF_EggCarry  = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggCarry")
-local RF_EggDrop   = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggDrop")
-local RF_EggPlace  = getRemote("Packages.Networking.RF/EggWorld.AskPlaceEgg")
-local RF_EggHatch  = getRemote("Packages.Networking.RF/EggWorld.AskHatch")
+local RF_EggCarry = getRemote("Packages.Networking.RF/EggWorld.AskFieldEggCarry")
+local RF_EggPlace = getRemote("Packages.Networking.RF/EggWorld.AskPlaceEgg")
 
 log("EggCarry:", RF_EggCarry and "OK" or "NIL")
-log("EggDrop:", RF_EggDrop and "OK" or "NIL")
 log("EggPlace:", RF_EggPlace and "OK" or "NIL")
 
 --========================================================--
--- FIND EGG
+-- FIND EGG (cache 5 detik)
 --========================================================--
+local eggCache = nil
+local eggCacheTime = 0
+local baseCache = nil
+local baseCacheTime = 0
+
 local function findAllEggs()
     local list = {}
     local world = workspace:FindFirstChild("World")
@@ -107,6 +109,10 @@ local function eggRank(egg)
 end
 
 local function findBestEgg()
+    local now = tick()
+    if eggCache and (now - eggCacheTime) < 5 then
+        if eggCache.Parent then return eggCache end
+    end
     local eggs = findAllEggs()
     if #eggs == 0 then return nil end
     local best, bestRank = nil, 0
@@ -114,6 +120,8 @@ local function findBestEgg()
         local r = eggRank(egg)
         if r > bestRank then bestRank = r; best = egg end
     end
+    eggCache = best
+    eggCacheTime = now
     return best
 end
 
@@ -129,13 +137,19 @@ local function getEggPos(egg)
 end
 
 --========================================================--
--- FIND BASE
+-- FIND BASE (cache 10 detik)
 --========================================================--
 local function findBase()
+    local now = tick()
+    if baseCache and (now - baseCacheTime) < 10 then
+        if baseCache.Parent then return baseCache end
+    end
     for _, obj in pairs(workspace:GetDescendants()) do
         local n = obj.Name:lower()
         if n:find("base") or n:find("markas") or n:find("deposit") then
             if obj:IsA("Model") or obj:IsA("BasePart") then
+                baseCache = obj
+                baseCacheTime = now
                 return obj
             end
         end
@@ -166,7 +180,6 @@ local function antiTrap()
                     pcall(function()
                         obj.CanTouch = false
                         obj.CanCollide = false
-                        obj.Transparency = 1
                     end)
                 end
             end
@@ -206,14 +219,18 @@ local function antiHit()
 end
 
 --========================================================--
--- AUTO LOOP — TELEPORT INSTAN
+-- AUTO LOOP STABIL
 --========================================================--
 local autoState = "idle"
 local lastAction = 0
+local lockedEgg = nil
+local lockedBasePos = nil
 
 local function runAutoLoop()
     if not _G.tian.Settings.AutoFull then
         autoState = "idle"
+        lockedEgg = nil
+        lockedBasePos = nil
         return
     end
     if not char or not char.Parent or not root then return end
@@ -221,12 +238,12 @@ local function runAutoLoop()
     local now = tick()
     if now - lastAction < _G.tian.CFG.LoopDelay then return end
 
-    -- CARI TELUR → LANGSUNG TELEPORT
     if autoState == "idle" then
         local bestEgg = findBestEgg()
         if bestEgg then
             local pos = getEggPos(bestEgg)
             if pos then
+                lockedEgg = bestEgg
                 root.CFrame = CFrame.new(pos + Vector3.new(0, _G.tian.CFG.FlyHeight, 0))
                 autoState = "grabEgg"
                 lastAction = now
@@ -234,36 +251,41 @@ local function runAutoLoop()
             end
         end
 
-    -- AMBIL TELUR → LANGSUNG TELEPORT KE MARKAS
     elseif autoState == "grabEgg" then
-        local bestEgg = findBestEgg()
-        if bestEgg and RF_EggCarry then
-            task.spawn(function()
-                pcall(function() RF_EggCarry:InvokeServer(bestEgg) end)
-            end)
+        if lockedEgg and lockedEgg.Parent and RF_EggCarry then
+            pcall(function() RF_EggCarry:InvokeServer(lockedEgg) end)
+            log("Egg diambil")
+        else
+            log("Egg ilang, reset")
+            autoState = "idle"
+            lockedEgg = nil
+            lastAction = now
+            return
         end
+
         local base = findBase()
         local basePos = getBasePos(base)
         if basePos then
+            lockedBasePos = basePos
             root.CFrame = CFrame.new(basePos + Vector3.new(0, _G.tian.CFG.FlyHeight, 0))
             autoState = "deposit"
             lastAction = now
             log("Teleport ke markas")
         else
             autoState = "idle"
+            lockedEgg = nil
+            lastAction = now
         end
 
-    -- TARUH DI MARKAS
     elseif autoState == "deposit" then
         if RF_EggPlace then
-            task.spawn(function()
-                pcall(function() RF_EggPlace:InvokeServer() end)
-            end)
+            pcall(function() RF_EggPlace:InvokeServer() end)
+            log("Egg ditaruh")
         end
-        task.wait(0.05)
         autoState = "idle"
+        lockedEgg = nil
+        lockedBasePos = nil
         lastAction = now
-        log("Egg ditaruh, ulang")
     end
 end
 
@@ -313,7 +335,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -65, 0, 25)
 Title.Position = UDim2.new(0, 58, 0, 8)
 Title.BackgroundTransparency = 1
-Title.Text = "script tian v5 🚬"
+Title.Text = "script tian v7 🚬"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 14
 Title.Font = Enum.Font.GothamBold
@@ -386,11 +408,12 @@ local function makeToggle(name, key, default)
     end)
 end
 
-makeToggle("AUTO EGG FULL", "AutoFull", true)
-makeToggle("Anti Trap", "AntiTrap", true)
-makeToggle("Anti Pukul", "AntiHit", true)
-makeToggle("Anti Penjaga", "AntiGuard", true)
-makeToggle("Auto Pukul Pencuri", "AutoClub", true)
+-- SEMUA OFF DULU — NYALAIN MANUAL
+makeToggle("AUTO EGG FULL", "AutoFull", false)
+makeToggle("Anti Trap", "AntiTrap", false)
+makeToggle("Anti Pukul", "AntiHit", false)
+makeToggle("Anti Penjaga", "AntiGuard", false)
+makeToggle("Auto Pukul Pencuri", "AutoClub", false)
 
 Min.MouseButton1Click:Connect(function()
     Main.Visible = not Main.Visible
@@ -446,14 +469,18 @@ player.CharacterAdded:Connect(function(c)
     root = c:WaitForChild("HumanoidRootPart")
     autoState = "idle"
     lastAction = 0
+    lockedEgg = nil
+    lockedBasePos = nil
+    eggCache = nil
+    baseCache = nil
     task.wait(1)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
             Title = "TIAN",
-            Text = "script tian v5 aktif 🚬",
+            Text = "script tian v7 siap 🚬",
             Duration = 5
         })
     end)
 end)
 
-log("Script Tian v5 aktif 🚬")
+log("Script Tian v7 siap 🚬")
