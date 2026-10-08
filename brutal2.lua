@@ -1,12 +1,11 @@
 --========================================================--
--- SCRIPT TIAN v11 🚬
--- Steal an Egg | Final | Menu Atas + Draggable
+-- SCRIPT TIAN v18 🚬
+-- Steal an Egg | Hold 4 Detik + 4 Telur Terbaik
 --========================================================--
 
 _G.tian = _G.tian or {}
-_G.tian.Settings = _G.tian.Settings or {}
 _G.tian.Home = _G.tian.Home or nil
-_G.tian.Stats = { eggs = 0, carried = 0 }
+_G.tian.Stats = { carried = 0 }
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -22,7 +21,7 @@ local root = char:WaitForChild("HumanoidRootPart")
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "TIAN",
-        Text = "tian v11 siap 🚬",
+        Text = "tian v18 siap 🚬",
         Duration = 5
     })
 end)
@@ -39,35 +38,32 @@ local function findRemote(name)
     return nil
 end
 
-local RF_EggCarry = findRemote("AskFieldEggCarry")
 local RF_EggPlace = findRemote("AskPlaceEgg")
-
-print("[TIAN] EggCarry:", RF_EggCarry and "OK" or "NIL")
 print("[TIAN] EggPlace:", RF_EggPlace and "OK" or "NIL")
 
 --========================================================--
 -- AREA RANK
 --========================================================--
 local AREA_RANK = {
-    ["Cosmic"] = 13, ["Titan Temple"] = 12, ["Abyss Ocean"] = 11,
-    ["Prehistoric"] = 10, ["Volcano"] = 9, ["Cherry Blossom"] = 8,
-    ["Enchanted Forest"] = 7, ["Snow"] = 6, ["Desert"] = 5,
-    ["Jungle"] = 4, ["Lake"] = 3, ["Forest"] = 2, ["Light Dark"] = 1,
+    ["Enchanted Forest"] = 100,
+    ["Light Dark"] = 99,
+    ["Titan Temple"] = 98,
+    ["Cherry Blossom"] = 97,
+    ["Cosmic"] = 96,
+    ["Prehistoric"] = 50,
+    ["Abyss Ocean"] = 49,
+    ["Volcano"] = 48,
+    ["Snow"] = 47,
+    ["Jungle"] = 46,
+    ["Desert"] = 45,
+    ["Lake"] = 44,
+    ["Forest"] = 43,
 }
 
-local function getAreaName(egg)
-    local node = egg
-    while node and node.Parent do
-        node = node.Parent
-        if AREA_RANK[node.Name] then return node.Name end
-    end
-    return "?"
-end
-
 --========================================================--
--- SCAN EGGS
+-- SCAN TOP 4
 --========================================================--
-local function scanEggs()
+local function scanTop4()
     local list = {}
     local world = workspace:FindFirstChild("World")
     if not world then return list end
@@ -100,43 +96,111 @@ local function scanEggs()
     end
 
     table.sort(list, function(a, b) return a.rank > b.rank end)
-    _G.tian.Eggs = list
-    _G.tian.Stats.eggs = #list
-    return list
+    local top4 = {}
+    for i = 1, math.min(4, #list) do
+        top4[#top4+1] = list[i]
+    end
+    return top4
 end
 
 --========================================================--
--- CARRY ALL
+-- CARI TOMBOL ClickRegion
+--========================================================--
+local function findClickRegion()
+    for _, g in pairs(player.PlayerGui:GetDescendants()) do
+        if g.Name == "ClickRegion" and g.Visible then
+            if g:IsA("TextButton") or g:IsA("ImageButton") then
+                return g
+            end
+        end
+    end
+    return nil
+end
+
+--========================================================--
+-- HOLD TOMBOL 4 DETIK
+--========================================================--
+local HOLD_DURATION = 4.0  -- 4 detik
+
+local function holdButton(btn)
+    if not btn then return false end
+    
+    print("[TIAN] hold tombol 4 detik...")
+    
+    -- FIRE DOWN
+    pcall(function() btn.MouseButton1Down:Fire() end)
+    pcall(function() btn.InputBegan:Fire(
+        Instance.new("InputObject", btn), 
+        false
+    ) end)
+    
+    -- HOLD selama 4 detik
+    task.wait(HOLD_DURATION)
+    
+    -- FIRE UP
+    pcall(function() btn.MouseButton1Up:Fire() end)
+    pcall(function() btn.MouseButton1Click:Fire() end)
+    
+    print("[TIAN] hold selesai")
+    task.wait(0.3)
+    return true
+end
+
+--========================================================--
+-- AMBIL 4 TELUR
 --========================================================--
 local carrying = false
 
-local function carryAll()
+local function takeTop4()
     if carrying then return end
     carrying = true
     task.spawn(function()
-        local eggs = scanEggs()
-        print("[TIAN] carry:", #eggs, "eggs")
+        local eggs = scanTop4()
+        print("[TIAN] top:", #eggs)
+
+        if #eggs == 0 then
+            carrying = false
+            return
+        end
+
         local carried = 0
         for i, egg in ipairs(eggs) do
             if not carrying then break end
-            if egg.pos then
-                root.CFrame = CFrame.new(egg.pos + Vector3.new(0, 6, 0))
-                task.wait(0.15)
-                if RF_EggCarry then
-                    pcall(function() RF_EggCarry:InvokeServer(egg.model) end)
+            print(string.format("[TIAN] %d/%d → %s", i, #eggs, egg.area))
+
+            -- Teleport ke telur
+            root.CFrame = CFrame.new(egg.pos + Vector3.new(0, 5, 0))
+            task.wait(0.4)
+
+            -- Cari tombol
+            local btn = findClickRegion()
+            if btn then
+                holdButton(btn)
+                carried = carried + 1
+            else
+                print("[TIAN] tombol ga muncul, tunggu...")
+                task.wait(1)
+                btn = findClickRegion()
+                if btn then
+                    holdButton(btn)
                     carried = carried + 1
                 end
-                task.wait(0.15)
+            end
+
+            task.wait(0.4)
+
+            -- Ke home
+            if _G.tian.Home and RF_EggPlace then
+                root.CFrame = CFrame.new(_G.tian.Home + Vector3.new(0, 5, 0))
+                task.wait(0.3)
+                pcall(function() RF_EggPlace:InvokeServer() end)
+                task.wait(0.2)
             end
         end
-        if _G.tian.Home and RF_EggPlace then
-            root.CFrame = CFrame.new(_G.tian.Home + Vector3.new(0, 6, 0))
-            task.wait(0.3)
-            pcall(function() RF_EggPlace:InvokeServer() end)
-        end
+
         _G.tian.Stats.carried = carried
         carrying = false
-        print("[TIAN] done:", carried)
+        print("[TIAN] done — carried:", carried, "/ 4")
     end)
 end
 
@@ -153,8 +217,8 @@ ScreenGui.Parent = player:WaitForChild("PlayerGui")
 
 local Main = Instance.new("Frame")
 Main.AnchorPoint = Vector2.new(0, 0)
-Main.Position = UDim2.new(0, 10, 0.15, 0)
-Main.Size = UDim2.new(0, 300, 0, 380)
+Main.Position = UDim2.new(0, 10, 0.35, 0)
+Main.Size = UDim2.new(0, 260, 0, 180)
 Main.BackgroundColor3 = Color3.fromRGB(15, 18, 25)
 Main.BackgroundTransparency = 0.1
 Main.BorderSizePixel = 0
@@ -163,11 +227,8 @@ Main.Draggable = true
 Main.Parent = ScreenGui
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
 
--- Draggable manual (lebih smooth)
 do
-    local dragging = false
-    local dragStart, startPos, dragInput
-
+    local dragging, dragStart, startPos, dragInput
     Main.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
@@ -181,14 +242,12 @@ do
             end)
         end
     end)
-
     Main.InputChanged:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseMovement
         or input.UserInputType == Enum.UserInputType.Touch then
             dragInput = input
         end
     end)
-
     UserInputService.InputChanged:Connect(function(input)
         if dragging and input == dragInput then
             local delta = input.Position - dragStart
@@ -199,17 +258,16 @@ do
     end)
 end
 
--- Header
 local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 40)
+Header.Size = UDim2.new(1, 0, 0, 32)
 Header.BackgroundColor3 = Color3.fromRGB(20, 25, 35)
 Header.BorderSizePixel = 0
 Header.Parent = Main
 Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 10)
 
 local Logo = Instance.new("Frame")
-Logo.Size = UDim2.new(0, 28, 0, 28)
-Logo.Position = UDim2.new(0, 8, 0.5, -14)
+Logo.Size = UDim2.new(0, 22, 0, 22)
+Logo.Position = UDim2.new(0, 8, 0.5, -11)
 Logo.BackgroundColor3 = Color3.fromRGB(120, 70, 200)
 Logo.Parent = Header
 Instance.new("UICorner", Logo).CornerRadius = UDim.new(1, 0)
@@ -219,52 +277,47 @@ LogoT.Size = UDim2.new(1, 0, 1, 0)
 LogoT.BackgroundTransparency = 1
 LogoT.Text = "T"
 LogoT.TextColor3 = Color3.new(1,1,1)
-LogoT.TextSize = 16
+LogoT.TextSize = 12
 LogoT.Font = Enum.Font.GothamBold
 LogoT.Parent = Logo
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -100, 1, 0)
-Title.Position = UDim2.new(0, 42, 0, 0)
+Title.Size = UDim2.new(1, -80, 1, 0)
+Title.Position = UDim2.new(0, 34, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "TIAN CENTER"
+Title.Text = "TIAN v18"
 Title.TextColor3 = Color3.fromRGB(255,255,255)
-Title.TextSize = 14
+Title.TextSize = 11
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
 local Min = Instance.new("TextButton")
-Min.Size = UDim2.new(0, 24, 0, 24)
-Min.Position = UDim2.new(1, -30, 0.5, -12)
+Min.Size = UDim2.new(0, 22, 0, 22)
+Min.Position = UDim2.new(1, -28, 0.5, -11)
 Min.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
 Min.Text = "–"
 Min.TextColor3 = Color3.new(1,1,1)
-Min.TextSize = 14
+Min.TextSize = 12
 Min.Font = Enum.Font.GothamBold
 Min.Parent = Header
 Instance.new("UICorner", Min).CornerRadius = UDim.new(0, 5)
-Min.MouseButton1Click:Connect(function()
-    Main.Visible = not Main.Visible
-end)
 
--- HOME
 local HomeLabel = Instance.new("TextLabel")
-HomeLabel.Size = UDim2.new(1, -20, 0, 18)
-HomeLabel.Position = UDim2.new(0, 10, 0, 46)
+HomeLabel.Size = UDim2.new(1, -20, 0, 16)
+HomeLabel.Position = UDim2.new(0, 10, 0, 38)
 HomeLabel.BackgroundTransparency = 1
 HomeLabel.Text = "HOME: -, -, -"
 HomeLabel.TextColor3 = Color3.fromRGB(160, 200, 160)
-HomeLabel.TextSize = 11
+HomeLabel.TextSize = 10
 HomeLabel.Font = Enum.Font.Code
 HomeLabel.TextXAlignment = Enum.TextXAlignment.Left
 HomeLabel.Parent = Main
 
--- BUTTONS
-local function makeBtn(text, xPos, yPos, color, callback)
+local function makeBtn(text, xPos, color, callback)
     local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.new(0, 68, 0, 26)
-    Btn.Position = UDim2.new(0, xPos, 0, yPos)
+    Btn.Size = UDim2.new(0, 78, 0, 30)
+    Btn.Position = UDim2.new(0, xPos, 0, 60)
     Btn.BackgroundColor3 = color
     Btn.Text = text
     Btn.TextColor3 = Color3.new(1,1,1)
@@ -276,90 +329,60 @@ local function makeBtn(text, xPos, yPos, color, callback)
     Btn.MouseButton1Click:Connect(callback)
 end
 
-makeBtn("SET HOME", 10, 70, Color3.fromRGB(40, 90, 150), function()
+makeBtn("SET HOME", 10, Color3.fromRGB(40, 90, 150), function()
     _G.tian.Home = root.Position
     print("[TIAN] home set")
 end)
 
-makeBtn("SCAN", 82, 70, Color3.fromRGB(40, 120, 60), function()
-    scanEggs()
-    print("[TIAN] scanned:", #_G.tian.Eggs)
+makeBtn("AMBIL 4", 92, Color3.fromRGB(150, 90, 30), function()
+    takeTop4()
 end)
 
-makeBtn("CARRY", 154, 70, Color3.fromRGB(150, 90, 30), function()
-    carryAll()
-end)
-
-makeBtn("STOP", 226, 70, Color3.fromRGB(140, 40, 40), function()
+makeBtn("STOP", 174, Color3.fromRGB(140, 40, 40), function()
     carrying = false
-    print("[TIAN] stopped")
 end)
 
--- STATS
 local StatsLbl = Instance.new("TextLabel")
-StatsLbl.Size = UDim2.new(1, -20, 0, 18)
-StatsLbl.Position = UDim2.new(0, 10, 0, 102)
+StatsLbl.Size = UDim2.new(1, -20, 0, 16)
+StatsLbl.Position = UDim2.new(0, 10, 0, 100)
 StatsLbl.BackgroundTransparency = 1
-StatsLbl.Text = "0 eggs"
+StatsLbl.Text = "carried: 0/4"
 StatsLbl.TextColor3 = Color3.fromRGB(140, 140, 160)
 StatsLbl.TextSize = 10
 StatsLbl.Font = Enum.Font.Code
 StatsLbl.TextXAlignment = Enum.TextXAlignment.Left
 StatsLbl.Parent = Main
 
--- LIST
-local ListFrame = Instance.new("ScrollingFrame")
-ListFrame.Size = UDim2.new(1, -20, 1, -135)
-ListFrame.Position = UDim2.new(0, 10, 0, 125)
-ListFrame.BackgroundColor3 = Color3.fromRGB(20, 25, 35)
-ListFrame.BorderSizePixel = 0
-ListFrame.ScrollBarThickness = 4
-ListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-ListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-ListFrame.Parent = Main
-Instance.new("UICorner", ListFrame).CornerRadius = UDim.new(0, 6)
+local InfoLbl = Instance.new("TextLabel")
+InfoLbl.Size = UDim2.new(1, -20, 1, -130)
+InfoLbl.Position = UDim2.new(0, 10, 0, 118)
+InfoLbl.BackgroundColor3 = Color3.fromRGB(20, 25, 35)
+InfoLbl.BorderSizePixel = 0
+InfoLbl.Text = "1. SET HOME di markas\n2. AMBIL 4 → hold 4 detik\n3. Prioritas: 5 area ujung"
+InfoLbl.TextColor3 = Color3.fromRGB(180, 180, 200)
+InfoLbl.TextSize = 10
+InfoLbl.Font = Enum.Font.Code
+InfoLbl.TextXAlignment = Enum.TextXAlignment.Left
+InfoLbl.TextYAlignment = Enum.TextYAlignment.Top
+InfoLbl.TextWrapped = true
+InfoLbl.Parent = Main
+Instance.new("UICorner", InfoLbl).CornerRadius = UDim.new(0, 6)
 
-local ListLayout = Instance.new("UIListLayout")
-ListLayout.Padding = UDim.new(0, 2)
-ListLayout.Parent = ListFrame
-
-local function refreshList()
-    for _, c in pairs(ListFrame:GetChildren()) do
-        if c:IsA("TextLabel") then c:Destroy() end
-    end
-    local eggs = _G.tian.Eggs or {}
-    for i, egg in ipairs(eggs) do
-        local L = Instance.new("TextLabel")
-        L.Size = UDim2.new(1, -8, 0, 18)
-        L.BackgroundTransparency = 1
-        L.Text = string.format("%d. [R%d] %s", i, egg.rank, egg.area)
-        L.TextColor3 = Color3.fromRGB(200, 200, 200)
-        L.TextSize = 11
-        L.Font = Enum.Font.Code
-        L.TextXAlignment = Enum.TextXAlignment.Left
-        L.Parent = ListFrame
-    end
-end
+Min.MouseButton1Click:Connect(function()
+    Main.Visible = not Main.Visible
+end)
 
 RunService.Heartbeat:Connect(function()
     if _G.tian.Home then
         HomeLabel.Text = string.format("HOME: %.1f, %.1f, %.1f",
             _G.tian.Home.X, _G.tian.Home.Y, _G.tian.Home.Z)
     else
-        HomeLabel.Text = string.format("HOME: %.1f, %.1f, %.1f",
+        HomeLabel.Text = string.format("POS: %.1f, %.1f, %.1f",
             root.Position.X, root.Position.Y, root.Position.Z)
     end
-    StatsLbl.Text = string.format("%d eggs | carried: %d",
-        _G.tian.Stats.eggs, _G.tian.Stats.carried)
+    StatsLbl.Text = string.format("carried: %d/4", _G.tian.Stats.carried)
 end)
 
-task.spawn(function()
-    while task.wait(2) do refreshList() end
-end)
-
---========================================================--
--- RESPAWN
---========================================================--
 player.CharacterAdded:Connect(function(c)
     char = c
     hum = c:WaitForChild("Humanoid")
@@ -367,4 +390,4 @@ player.CharacterAdded:Connect(function(c)
     carrying = false
 end)
 
-print("[TIAN] v11 aktif 🚬")
+print("[TIAN] v18 aktif 🚬")
